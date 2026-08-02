@@ -1,9 +1,43 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const LIVE_URL = 'https://futaba-ario.github.io/cosmic-garden/';
 type Box = { x: number; y: number; width: number; height: number };
+
+function extractProductionAsset(html: string, kind: 'script' | 'stylesheet'): string {
+  const match = kind === 'script'
+    ? html.match(/<script\b[^>]*\bsrc=["']([^"']*\/assets\/index-[^"']+\.js)["']/i)
+    : html.match(/<link\b[^>]*\bhref=["']([^"']*\/assets\/index-[^"']+\.css)["']/i);
+  if (!match?.[1]) throw new Error(`dist/index.htmlからproduction ${kind} assetを抽出できません。先にnpm run buildを実行してください。`);
+  return match[1];
+}
+
+function toLiveAssetUrl(assetPath: string): string {
+  const match = assetPath.match(/(?:^|\/)(assets\/[^?#]+)(?:[?#].*)?$/);
+  if (!match?.[1]) throw new Error(`公開URLへ変換できないasset pathです: ${assetPath}`);
+  return new URL(match[1], LIVE_URL).href;
+}
+
+function getLocalCommitShort(): string | null {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function readLocalBuild(): Promise<{ commit: string | null; assets: { script: string; stylesheet: string } }> {
+  const html = await readFile(join(process.cwd(), 'dist', 'index.html'), 'utf8');
+  return {
+    commit: getLocalCommitShort(),
+    assets: {
+      script: toLiveAssetUrl(extractProductionAsset(html, 'script')),
+      stylesheet: toLiveAssetUrl(extractProductionAsset(html, 'stylesheet')),
+    },
+  };
+}
 
 async function tap(page: Page, locator: Locator): Promise<void> {
   const box = await locator.boundingBox();
@@ -44,6 +78,7 @@ async function assertLayout(page: Page): Promise<void> {
 test('published Pages mobile acceptance journey', async ({ page }, testInfo) => {
   const output = join(process.cwd(), 'release-artifacts', 'live-pages', 'mobile');
   await mkdir(output, { recursive: true });
+  const localBuild = await readLocalBuild();
   const consoleErrors: string[] = []; const pageErrors: string[] = []; const networkErrors: string[] = [];
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   page.on('pageerror', (error) => pageErrors.push(String(error)));
@@ -63,6 +98,12 @@ test('published Pages mobile acceptance journey', async ({ page }, testInfo) => 
 
   const response = await page.goto('?debugDate=2026-07-01T12:00:00', { waitUntil: 'networkidle' });
   expect(response?.status()).toBe(200);
+  const assets = await page.evaluate(() => ({
+    scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+    stylesheets: [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].map((link) => link.href),
+  }));
+  expect(assets.scripts).toContain(localBuild.assets.script);
+  expect(assets.stylesheets).toContain(localBuild.assets.stylesheet);
   await page.waitForFunction(() => typeof window.advanceTime === 'function');
   await page.evaluate(() => window.advanceTime(3000));
   const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
@@ -128,7 +169,7 @@ test('published Pages mobile acceptance journey', async ({ page }, testInfo) => 
   expect(consoleErrors).toEqual([]); expect(pageErrors).toEqual([]); expect(networkErrors).toEqual([]);
 
   await writeFile(join(output, `${slug}.json`), JSON.stringify({
-    project: slug, url: LIVE_URL, verifiedAt: new Date().toISOString(), portrait, landscape,
+    project: slug, url: LIVE_URL, verifiedAt: new Date().toISOString(), localBuild, assets, portrait, landscape,
     checks: { http200: true, touchscreenTap: true, attraction: true, dragTrail: true, holdGalaxy: true, decay: true, viewportRotation: true, uiNoOverlap: true, audioRejectionHandled: true, shareFallback: true, pngDownload: true },
     states: { initial, attracted, dragging, galaxy, decayed }, pngBytes: png.length,
     errors: { console: consoleErrors, page: pageErrors, network: networkErrors }, limitation: 'Playwright device-profile emulation; not a physical device.',

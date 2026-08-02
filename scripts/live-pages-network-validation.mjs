@@ -1,5 +1,6 @@
 /* global console, document, navigator, performance, URL, window */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { chromium } from '@playwright/test';
@@ -153,8 +154,16 @@ async function measureTrial(number) {
 
 async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
+  const localCommit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: process.cwd(), encoding: 'utf8' }).trim();
+  const distHtml = await readFile(path.join(process.cwd(), 'dist', 'index.html'), 'utf8');
+  const expectedJsAsset = distHtml.match(/assets\/([^"']+\.js)/)?.[1] ?? null;
+  if (!expectedJsAsset) throw new Error('dist/index.htmlからproduction JS assetを特定できません。');
   const trials = [];
   for (let trial = 1; trial <= TRIALS; trial += 1) trials.push(await measureTrial(trial));
+  const liveJsAssets = [...new Set(trials.flatMap((trial) => trial.productionAssets)
+    .filter((url) => url.endsWith('.js')).map((url) => path.basename(new URL(url).pathname)))];
+  const deploymentMatchesLocalBuild = trials.every((trial) => trial.productionAssets
+    .filter((url) => url.endsWith('.js')).every((url) => path.basename(new URL(url).pathname) === expectedJsAsset));
   const summary = {
     responseStartMs: stats(trials.map((trial) => trial.responseStartMs)),
     domContentLoadedMs: stats(trials.map((trial) => trial.domContentLoadedMs)),
@@ -171,7 +180,7 @@ async function main() {
       totalBytes: stats(trials.map((trial) => trial.transfer.totalBytes)),
     },
   };
-  const pass = trials.every((trial) => trial.navigationStatus === 200 && trial.productionAssetsValid && trial.fade === 1
+  const pass = deploymentMatchesLocalBuild && trials.every((trial) => trial.navigationStatus === 200 && trial.productionAssetsValid && trial.fade === 1
     && trial.cacheHits === 0 && trial.notFoundResponses.length === 0 && trial.unsuccessfulResponses.length === 0
     && trial.failedRequests.length === 0 && trial.consoleErrors.length === 0)
     && summary.renderReadyMs.median <= PASS_CRITERIA.medianRenderReadyMsMax
@@ -179,6 +188,7 @@ async function main() {
   const result = {
     generatedAt: new Date().toISOString(),
     target: TARGET_URL,
+    deploymentEvidence: { localCommit, expectedJsAssetFromDist: expectedJsAsset, liveJsAssets, deploymentMatchesLocalBuild },
     measurement: {
       runner: `${process.platform} ${process.arch}`,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -202,7 +212,7 @@ async function main() {
     const cdnCache = [...new Set(trial.resources.map((resource) => resource.cdnCache).filter(Boolean))].join('/') || 'n/a';
     return `| ${trial.trial} | ${trial.navigationStatus} | ${trial.responseStartMs} | ${trial.domContentLoadedMs} | ${trial.renderReadyMs} | ${trial.fadeOneMs} | ${formatMs(trial.networkTimingMs.dns)} | ${formatMs(trial.networkTimingMs.connect)} | ${formatMs(trial.networkTimingMs.ssl)} | ${formatMs(trial.networkTimingMs.ttfb)} | ${formatBytes(trial.transfer.totalBytes)} | ${trial.cacheHits} | ${cdnCache} | ${trial.notFoundResponses.length} | ${trial.consoleErrors.length} |`;
   }).join('\n');
-  const markdown = `# GitHub Pages 実公開経路ロード計測\n\n判定: **${pass ? 'PASS' : 'FAIL'}**\n\n- URL: ${TARGET_URL}\n- 計測時刻: ${result.generatedAt}\n- 実行環境: ${result.measurement.runner} / ${result.measurement.timezone}\n- 接続: 現在の実接続、CDP throttlingなし\n- cold条件: 各試行でChromiumプロセス/Contextを作り直し、HTTP cache無効、Service Worker無効\n\n| 試行 | status | response | DCL | state API | fade=1 | DNS | connect | SSL | TTFB | 総転送 | browser cache | CDN x-cache | 404 | console error |\n| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |\n${rows}\n\n## 集計（中央値 / 最大値）\n\n- response: ${formatMs(summary.responseStartMs.median)} / ${formatMs(summary.responseStartMs.maximum)}\n- DCL: ${formatMs(summary.domContentLoadedMs.median)} / ${formatMs(summary.domContentLoadedMs.maximum)}\n- render_game_to_text: ${formatMs(summary.renderReadyMs.median)} / ${formatMs(summary.renderReadyMs.maximum)}\n- fade=1: ${formatMs(summary.fadeOneMs.median)} / ${formatMs(summary.fadeOneMs.maximum)}\n- DNS: ${formatMs(summary.dnsMs.median)} / ${formatMs(summary.dnsMs.maximum)} (${summary.dnsMs.samples} samples)\n- connect: ${formatMs(summary.connectMs.median)} / ${formatMs(summary.connectMs.maximum)} (${summary.connectMs.samples} samples)\n- SSL: ${formatMs(summary.sslMs.median)} / ${formatMs(summary.sslMs.maximum)} (${summary.sslMs.samples} samples)\n- TTFB: ${formatMs(summary.ttfbMs.median)} / ${formatMs(summary.ttfbMs.maximum)} (${summary.ttfbMs.samples} samples)\n- HTML / JS / CSS / 総転送中央値: ${formatBytes(summary.transfer.htmlBytes.median)} / ${formatBytes(summary.transfer.javascriptBytes.median)} / ${formatBytes(summary.transfer.cssBytes.median)} / ${formatBytes(summary.transfer.totalBytes.median)}\n\n## PASS基準\n\n- 5試行すべてstatus 200、ハッシュ付きproduction JS/CSS、状態API、fade=1を確認\n- browser disk/prefetch cache hit、Service Worker、404、失敗request、console errorがすべて0\n- 状態API中央値5秒以下、fade=1最大10秒以下\n\n## 限界\n\n計測値は実行地点、時刻、現在のインターネット経路、GitHub Pages CDN edge/cache状態に依存する。ブラウザcacheはcoldだがCDNの\`x-cache: HIT\`は配信経路として利用され、OSのDNS cacheや上流/CDN cacheのcoldは保証できない。単一地点の結果であり、他地域・ISP・無線回線・端末を代表しない。\n`;
+  const markdown = `# GitHub Pages 実公開経路ロード計測\n\n判定: **${pass ? 'PASS' : 'FAIL'}**\n\n- URL: ${TARGET_URL}\n- 計測時刻: ${result.generatedAt}\n- デプロイ照合: commit \`${localCommit}\` のlocal production asset \`${expectedJsAsset}\` と公開JS \`${liveJsAssets.join(', ')}\` が5/5試行で一致\n- 実行環境: ${result.measurement.runner} / ${result.measurement.timezone}\n- 接続: 現在の実接続、CDP throttlingなし\n- cold条件: 各試行でChromiumプロセス/Contextを作り直し、HTTP cache無効、Service Worker無効\n\n| 試行 | status | response | DCL | state API | fade=1 | DNS | connect | SSL | TTFB | 総転送 | browser cache | CDN x-cache | 404 | console error |\n| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |\n${rows}\n\n## 集計（中央値 / 最大値）\n\n- response: ${formatMs(summary.responseStartMs.median)} / ${formatMs(summary.responseStartMs.maximum)}\n- DCL: ${formatMs(summary.domContentLoadedMs.median)} / ${formatMs(summary.domContentLoadedMs.maximum)}\n- render_game_to_text: ${formatMs(summary.renderReadyMs.median)} / ${formatMs(summary.renderReadyMs.maximum)}\n- fade=1: ${formatMs(summary.fadeOneMs.median)} / ${formatMs(summary.fadeOneMs.maximum)}\n- DNS: ${formatMs(summary.dnsMs.median)} / ${formatMs(summary.dnsMs.maximum)} (${summary.dnsMs.samples} samples)\n- connect: ${formatMs(summary.connectMs.median)} / ${formatMs(summary.connectMs.maximum)} (${summary.connectMs.samples} samples)\n- SSL: ${formatMs(summary.sslMs.median)} / ${formatMs(summary.sslMs.maximum)} (${summary.sslMs.samples} samples)\n- TTFB: ${formatMs(summary.ttfbMs.median)} / ${formatMs(summary.ttfbMs.maximum)} (${summary.ttfbMs.samples} samples)\n- HTML / JS / CSS / 総転送中央値: ${formatBytes(summary.transfer.htmlBytes.median)} / ${formatBytes(summary.transfer.javascriptBytes.median)} / ${formatBytes(summary.transfer.cssBytes.median)} / ${formatBytes(summary.transfer.totalBytes.median)}\n\n## PASS基準\n\n- 5試行すべてでlocal HEADのproduction JS assetと公開hashed JSが一致\n- 5試行すべてstatus 200、ハッシュ付きproduction JS/CSS、状態API、fade=1を確認\n- browser disk/prefetch cache hit、Service Worker、404、失敗request、console errorがすべて0\n- 状態API中央値5秒以下、fade=1最大10秒以下\n\n## 限界\n\n計測値は実行地点、時刻、現在のインターネット経路、GitHub Pages CDN edge/cache状態に依存する。ブラウザcacheはcoldだがCDNの\`x-cache: HIT\`は配信経路として利用され、OSのDNS cacheや上流/CDN cacheのcoldは保証できない。単一地点の結果であり、他地域・ISP・無線回線・端末を代表しない。\n`;
   await writeFile(path.join(OUTPUT_DIR, 'report.md'), markdown);
   process.stdout.write(`${markdown}\nJSON: ${path.join(OUTPUT_DIR, 'results.json')}\n`);
   if (!pass) process.exitCode = 1;
