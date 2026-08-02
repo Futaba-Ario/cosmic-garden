@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+release-artifacts/
+progress.md
+playwright-report/
+blob-report/
+coverage/
+*.tsbuildinfo

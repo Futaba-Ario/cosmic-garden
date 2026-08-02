@@ -1,0 +1,30 @@
+:root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #050814; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body, #app { width: 100%; min-height: 100%; margin: 0; overflow: hidden; }
+body { background: #050814; }
+#app { position: fixed; inset: 0; }
+#cosmic-canvas, #fallback { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#ui-layer { position: absolute; inset: 0; pointer-events: none; }
+#ui-layer button { pointer-events: auto; }
+.onboarding, .status, .controls, .toast { position: absolute; color: #f6f3ff; text-shadow: 0 1px 8px #000; }
+.onboarding { left: 50%; top: 50%; width: min(31rem, calc(100% - 2rem)); transform: translate(-50%, -50%); text-align: center; transition: opacity .45s ease, transform .45s ease; }
+.onboarding p { margin: 0 0 .45rem; font-size: clamp(1.35rem, 4vw, 2.1rem); letter-spacing: .08em; }
+.onboarding small { opacity: .85; }
+.onboarding.is-hidden { opacity: 0; transform: translate(-50%, -45%); pointer-events: none; }
+.status { top: max(1rem, env(safe-area-inset-top)); left: max(1rem, env(safe-area-inset-left)); font-size: .8rem; letter-spacing: .06em; opacity: .8; }
+.controls { right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; gap: .45rem; flex-wrap: wrap; justify-content: flex-end; }
+.controls button { appearance: none; border: 1px solid #ffffff55; border-radius: 999px; background: #10172cbb; color: #fff; padding: .45rem .72rem; font: inherit; font-size: .78rem; cursor: pointer; backdrop-filter: blur(5px); }
+.controls button:focus-visible { outline: 2px solid #f9d8ff; outline-offset: 2px; }
+.toast { left: 50%; bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 3.2rem); transform: translate(-50%, .5rem); margin: 0; padding: .45rem .75rem; border-radius: 999px; background: #10172ce6; opacity: 0; transition: opacity .2s, transform .2s; font-size: .78rem; white-space: nowrap; }
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 430px) { .controls { left: 1rem; justify-content: center; } .toast { bottom: 5.75rem; max-width: calc(100% - 2rem); white-space: normal; text-align: center; } }
+#fallback { display: flex; flex-direction: column; align-items: center; justify-content: center; isolation: isolate; padding: 2rem; color: #eaf4ff; text-align: center; overflow: hidden; background: radial-gradient(circle at 68% 26%, rgb(var(--fallback-primary, 92 80 141) / .45) 0, transparent 38%), radial-gradient(circle at 25% 72%, rgb(var(--fallback-secondary, 70 95 170) / .28) 0, transparent 45%), linear-gradient(145deg, rgb(var(--fallback-background, 16 21 45)), #030611); }
+#fallback p, #fallback small { position: relative; z-index: 1; text-shadow: 0 2px 14px #000; }
+#fallback p { margin: 0 0 .5rem; font-size: clamp(1.25rem, 4vw, 2rem); letter-spacing: .12em; }
+#fallback small { max-width: 30rem; opacity: .78; }
+.fallback-stars, .fallback-stars::before, .fallback-stars::after { position: absolute; inset: 0; content: ''; background-repeat: repeat; }
+.fallback-stars { opacity: .85; background-image: radial-gradient(circle, #fff 0 1px, transparent 1.5px); background-size: 67px 71px; background-position: 13px 19px; }
+.fallback-stars::before { opacity: .6; background-image: radial-gradient(circle, rgb(var(--fallback-primary, 170 210 255)) 0 1.3px, transparent 1.8px); background-size: 113px 97px; background-position: 41px 7px; }
+.fallback-stars::after { opacity: .5; background-image: radial-gradient(circle, rgb(var(--fallback-secondary, 190 160 255)) 0 .8px, transparent 1.4px); background-size: 83px 109px; background-position: 5px 53px; }
+@media (prefers-reduced-motion: reduce) { .onboarding, .toast { transition-duration: .01ms; } }
