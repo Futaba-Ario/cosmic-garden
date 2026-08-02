@@ -63,4 +63,5 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be5ca5fce6e763baed58fa128 # v5
+        # GitHub's official Pages documentation currently recommends v4.
+        uses: actions/deploy-pages@v4
