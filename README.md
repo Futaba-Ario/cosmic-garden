@@ -22,6 +22,7 @@ npm run dev
 | `npm run test:e2e:mobile` | iPhone/WebKit・Pixel/Chromiumのモバイル検証 |
 | `npm run test:e2e:cross-browser` | Chromium / Firefox / WebKitの主要操作スモーク |
 | `npm run test:network` | production previewをSlow 4G相当で5回測定 |
+| `npm run test:network:live` | 公開GitHub Pagesを現在の実接続で5回測定 |
 | `npm run test:soak` | production previewを3分間操作しメモリ・FPSを測定 |
 | `npm run build` | production build |
 
@@ -61,14 +62,25 @@ npm run dev
 
 push前にはローカルでも `npm run build` を実行して確認する。ワークフロー成功後の公開URLは、Actions実行結果の **Deploy to GitHub Pages** ステップとSettings → Pagesで確認できる。
 
+### 公開QA（2026-08-02）
+
+- 公開URL: https://futaba-ario.github.io/cosmic-garden/
+- ユーザー提供記録: GitHub Pages設定完了。
+- ユーザー提供記録: 2026-08-02にiPhone実機Safariで公開ページを確認済み。
+- 自動検証: iPhone 13相当/WebKitとPixel 7相当/Chromiumでportrait・landscape、touch操作、UI、共有fallback、PNG保存、通信エラーなしを確認。
+- Android実機Chrome: 未確認。エミュレーション結果と分離し、公開後の実機確認項目として残す。
+
 ## QA成果物
 
 Playwright自身の一時出力はスイート別に `test-results/e2e`、`test-results/mobile`、`test-results/cross-browser`、`test-results/soak` へ分離され、各スイート実行時に掃除される。
 
-リリース判定に使う永続証跡は次の安定パスへ保存され、後続のPlaywright実行では削除されない。
+リリース判定に使う証跡は追跡外の `release-artifacts/` 以下へローカル生成され、後続のPlaywright実行では削除されない。必要に応じて次のコマンドで再生成する。
 
-- モバイルportrait／landscape画像4枚: [`release-artifacts/mobile/`](release-artifacts/mobile/)
-- Slow 4G計測JSON／Markdown: [`release-artifacts/network/`](release-artifacts/network/)
-- 3分soak計測JSON／Markdown／PNG: [`release-artifacts/soak/`](release-artifacts/soak/)
+- モバイルportrait／landscape画像4枚: `release-artifacts/mobile/`（`npm run test:e2e:mobile`）
+- Slow 4G計測JSON／Markdown: `release-artifacts/network/`（`npm run test:network`）
+- GitHub Pages実公開経路の計測JSON／Markdown: `release-artifacts/live-pages/network/`（`npm run test:network:live`）
+- 3分soak計測JSON／Markdown／PNG: `release-artifacts/soak/`（`npm run test:soak`）
+- 公開Pagesモバイル画像4枚／JSON／Markdown: `release-artifacts/live-pages/mobile/`（`npm run test:live-pages:mobile`）
+- 公開Pagesデスクトップ操作JSON／Markdown／PNG: `release-artifacts/live-pages/interaction/`（`npm run test:pages:interaction`）
 
 CDP低速回線検証はlocalhost向けの再現条件であり、実CDN、公開TLS/DNS、無線品質、基地局混雑は含まない。公開環境・実端末でも最終確認すること。
