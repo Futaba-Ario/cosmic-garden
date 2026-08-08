@@ -1,86 +1,59 @@
-# 星雲の庭
+# いまの、太陽系。
 
-時刻と季節で表情を変える、Three.js製のインタラクティブWebアートだよ。
+端末の現在日時から太陽・8惑星・月の位置を近似計算し、斜め上から眺められるThree.js製のインタラクティブ3D太陽系だよ。
 
-## セットアップと実行
+## セットアップ
 
 ```bash
 npm install
 npm run dev
 ```
 
-`http://localhost:5173` を開く。静的公開用の成果物は `npm run build` で `dist/` に生成され、`npm run preview` で確認できる。
+`http://localhost:5173` を開く。公開用ファイルは `npm run build` で `dist/` に生成される。
 
-## スクリプト
+## 操作
+
+- ドラッグ／1本指スワイプ: 視点を回転
+- ホイール／ピンチ: ズーム
+- 惑星または名前ラベルを選択: 惑星へカメラを移動して詳細を表示
+- 「全体を見る」／ダブルクリック: 太陽系全景へ戻る
+- `F`: 全画面切り替え
+- 右下のボタン: 環境音、共有、PNG保存
+
+## 位置計算と表示スケール
+
+- 日時をユリウス日へ変換し、J2000.0基準の平均軌道要素と経年変化から各惑星の位置を求める。
+- ケプラー方程式を反復計算し、太陽中心の黄道座標へ変換する。
+- 月は地球を中心とした簡略軌道で近似する。
+- 外部APIや天体データ通信は使用せず、ブラウザ内で完結する。
+- 海王星までを同時に見渡せるよう軌道距離を対数圧縮し、天体サイズを識別用に拡大している。
+
+表示位置は鑑賞・教育向けの近似値で、観測、航法、占星術など精密な位置を必要とする用途には使わない。
+
+## 日時を固定する
+
+開発・テスト用の `debugDate` を指定すると、同じ惑星配置を再現できる。
+
+```text
+/?debugDate=2026-08-08T12:00:00Z
+```
+
+## 品質とフォールバック
+
+端末性能と描画負荷に応じて、DPR、背景の星数、軌道線の滑らかさを調整する。`prefers-reduced-motion` ではカメラ移動を短縮し、タブ非表示中は描画と音を一時停止する。
+
+WebGLが使えない場合やコンテキストを失った場合は、同じ日時の惑星位置を簡略化した2D太陽系へ切り替える。
+
+## 検証
 
 | コマンド | 内容 |
 | --- | --- |
 | `npm run typecheck` | TypeScript型検査 |
 | `npm run lint` | ESLint |
-| `npm run test` | Vitest単体テスト |
-| `npm run test:e2e` | ChromiumのE2E・16テーマ・レスポンシブ検証 |
-| `npm run test:e2e:mobile` | iPhone/WebKit・Pixel/Chromiumのモバイル検証 |
-| `npm run test:e2e:cross-browser` | Chromium / Firefox / WebKitの主要操作スモーク |
-| `npm run test:network` | production previewをSlow 4G相当で5回測定 |
-| `npm run test:network:live` | 公開GitHub Pagesを現在の実接続で5回測定 |
-| `npm run test:soak` | production previewを3分間操作しメモリ・FPSを測定 |
+| `npm test` | 天体計算を含むVitest単体テスト |
+| `npm run test:e2e` | Playwrightによる主要画面・操作検証 |
 | `npm run build` | production build |
-
-## 操作
-
-- ポインターを近づける: 星が引き寄せられる
-- 素早く動かす: 光の軌跡が残る
-- 長押しして離す: 小さな銀河が生まれる
-- `F`: 全画面切り替え
-- 音・共有・PNG保存: 右下のボタン
-
-## テーマ確認
-
-開発・テスト時だけ `debugDate` で時刻を固定できる。粒子配置も固定シードなので、テーマ比較を再現できる。
-
-```text
-/?debugDate=2026-04-01T06:00:00
-```
-
-時刻帯は朝（06:00）、昼（12:00）、夕方（18:00）、深夜（23:00）、季節は1月・4月・7月・10月を代表値に使う。
-
-## 品質とフォールバック
-
-端末のコア数・メモリ・DPR・描画サイズから品質を選び、低FPSが続くと段階的に軽量化する。`prefers-reduced-motion` では動きを抑え、WebGLが使えない／コンテキストを失った場合も日時・季節色の静止した星空を表示する。タブ非表示中は描画と音を止める。
 
 ## 公開
 
-`dist/` は任意の静的ホスティング（GitHub Pages、Netlify、Cloudflare Pagesなど）へそのまま配置できる。サイトをサブパスで配る場合は、公開先のパスに合わせて `vite.config.ts` の `base` を設定してから build する。
-
-### GitHub Pages
-
-`.github/workflows/deploy.yml` は `main` へのpush（またはActions画面からの手動実行）で、`dist/` をGitHub Pagesへ公開する。リポジトリの **Settings → Pages → Build and deployment → Source** で **GitHub Actions** を一度選ぶ。
-
-- 通常のプロジェクトリポジトリ `OWNER/cosmic-garden` は、自動的に `https://OWNER.github.io/cosmic-garden/` 向けの `base: '/cosmic-garden/'` でbuildされる。
-- `OWNER/OWNER.github.io` というユーザーサイトは、ルートURL向けの `base: '/'` でbuildされる。
-- 独自の公開パスを使う場合は、GitHubの **Settings → Secrets and variables → Actions → Variables** に `PAGES_BASE_PATH` を追加する。`preview/cosmic-garden`、`/preview/cosmic-garden/` のどちらでも使え、`/preview/cosmic-garden/` に正規化される。
-
-push前にはローカルでも `npm run build` を実行して確認する。ワークフロー成功後の公開URLは、Actions実行結果の **Deploy to GitHub Pages** ステップとSettings → Pagesで確認できる。
-
-### 公開QA（2026-08-02）
-
-- 公開URL: https://futaba-ario.github.io/cosmic-garden/
-- ユーザー提供記録: GitHub Pages設定完了。
-- ユーザー提供記録: 2026-08-02にiPhone実機Safariで公開ページを確認済み。
-- 自動検証: iPhone 13相当/WebKitとPixel 7相当/Chromiumでportrait・landscape、touch操作、UI、共有fallback、PNG保存、通信エラーなしを確認。
-- Android実機Chrome: 未確認。エミュレーション結果と分離し、公開後の実機確認項目として残す。
-
-## QA成果物
-
-Playwright自身の一時出力はスイート別に `test-results/e2e`、`test-results/mobile`、`test-results/cross-browser`、`test-results/soak` へ分離され、各スイート実行時に掃除される。
-
-リリース判定に使う証跡は追跡外の `release-artifacts/` 以下へローカル生成され、後続のPlaywright実行では削除されない。必要に応じて次のコマンドで再生成する。
-
-- モバイルportrait／landscape画像4枚: `release-artifacts/mobile/`（`npm run test:e2e:mobile`）
-- Slow 4G計測JSON／Markdown: `release-artifacts/network/`（`npm run test:network`）
-- GitHub Pages実公開経路の計測JSON／Markdown: `release-artifacts/live-pages/network/`（`npm run test:network:live`）
-- 3分soak計測JSON／Markdown／PNG: `release-artifacts/soak/`（`npm run test:soak`）
-- 公開Pagesモバイル画像4枚／JSON／Markdown: `release-artifacts/live-pages/mobile/`（`npm run test:live-pages:mobile`）
-- 公開Pagesデスクトップ操作JSON／Markdown／PNG: `release-artifacts/live-pages/interaction/`（`npm run test:pages:interaction`）
-
-CDP低速回線検証はlocalhost向けの再現条件であり、実CDN、公開TLS/DNS、無線品質、基地局混雑は含まない。公開環境・実端末でも最終確認すること。
+`dist/` は静的ホスティングへ配置できる。`.github/workflows/deploy.yml` は `main` へのpushでGitHub Pagesへ公開する。リポジトリ名に応じた公開サブパスは `vite.config.ts` で自動解決される。

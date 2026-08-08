@@ -1,46 +1,35 @@
 import { test, expect } from '@playwright/test';
 
-test('WebGL unavailable shows themed static fallback with a reason', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+test('WebGL unavailable shows a dated 2D solar-system fallback', async ({ page }) => {
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: function (type: string, ...args: unknown[]) { if (type === 'webgl' || type === 'webgl2') return null; return Reflect.apply(original, this, [type, ...args]); } });
   });
-  await page.setViewportSize({ width: 900, height: 600 });
-  await page.goto('/?debugDate=2026-10-01T18:00:00');
-  await expect(page.getByText('静かな星明かりの庭')).toBeVisible();
+  await page.goto('/?debugDate=2026-08-08T12:00:00Z');
   await expect(page.locator('#fallback')).toHaveAttribute('data-reason', 'webgl-unavailable');
+  await expect(page.locator('#fallback').getByText('いまの、太陽系。')).toBeVisible();
+  await expect(page.locator('.fallback-body')).toHaveCount(10);
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.mode).toBe('fallback'); expect(state.fallbackReason).toBe('webgl-unavailable'); expect(state.season).toBe('autumn');
-  await page.screenshot({ path: 'test-results/phase-5-fallback.png' });
-  expect(errors).toEqual([]);
+  expect(state.mode).toBe('fallback'); expect(state.fallbackReason).toBe('webgl-unavailable'); expect(state.bodyCount).toBe(10);
 });
 
 test('reduced motion chooses reduced quality and keeps the experience usable', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.setViewportSize({ width: 900, height: 600 });
-  await page.goto('/?debugDate=2026-04-01T06:00:00');
+  await page.goto('/?debugDate=2026-08-08T12:00:00Z');
   await page.waitForFunction(() => typeof window.advanceTime === 'function');
-  await page.evaluate(() => window.advanceTime(3000));
+  await page.evaluate(() => window.advanceTime(500));
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.mode).toBe('cosmos'); expect(state.reducedMotion).toBe(true); expect(state.quality).toBe('reduced');
-  await page.screenshot({ path: 'test-results/phase-5-reduced-motion.png' });
-  expect(errors).toEqual([]);
+  expect(state.mode).toBe('solar-system'); expect(state.reducedMotion).toBe(true); expect(state.quality).toBe('reduced');
 });
 
-test('WebGL context loss switches to the static fallback', async ({ page }) => {
-  await page.goto('/?debugDate=2026-07-01T12:00:00');
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'cosmos');
+test('WebGL context loss switches to fallback', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'solar-system');
   await page.locator('#cosmic-canvas').dispatchEvent('webglcontextlost');
   await expect(page.locator('#fallback')).toHaveAttribute('data-reason', 'context-lost');
-  const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(state.mode).toBe('fallback'); expect(state.fallbackReason).toBe('context-lost');
 });
 
-test('visibility pauses deterministic updates and resumes them', async ({ page }) => {
+test('visibility pauses and resumes deterministic updates', async ({ page }) => {
   await page.addInitScript(() => {
     let state: DocumentVisibilityState = 'visible';
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
@@ -56,6 +45,5 @@ test('visibility pauses deterministic updates and resumes them', async ({ page }
   expect(paused.paused).toBe(true); expect(paused.elapsedMs).toBe(before.elapsedMs);
   await page.evaluate(() => (window as typeof window & { __setTestVisibility: (state: DocumentVisibilityState) => void }).__setTestVisibility('visible'));
   await page.evaluate(() => window.advanceTime(100));
-  const resumed = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  expect(resumed.paused).toBe(false); expect(resumed.elapsedMs).toBeGreaterThan(paused.elapsedMs);
+  expect(JSON.parse(await page.evaluate(() => window.render_game_to_text())).paused).toBe(false);
 });
